@@ -1,17 +1,16 @@
 name: Dependabot Alerts to Issues
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 9 * * *"
-  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: read
-  issues: write
 
 jobs:
   dependabot:
+    name: Create issues for Dependabot alerts
     runs-on: ubuntu-latest
 
     steps:
@@ -19,10 +18,93 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DEPENDABOT_TOKEN }}
           REPO: ${{ github.repository }}
+        shell: bash
         run: |
-          gh api \
+          set -e
+
+          echo "Checking Dependabot alerts..."
+
+          alerts=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            "/repos/$REPO/dependabot/alerts?state=open" \
-            --paginate \
-            --jq '.[] |
-              "Title: \(.security_advisory.summary)\nPackage: \(.dependency.package.name)\nSeverity: \(.security_advisory.severity)\nURL: \(.html_url)"'
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "/repos/$REPO/dependabot/alerts?state=open&per_page=100")
+
+          alert_count=$(echo "$alerts" | jq 'length')
+
+          echo "Found $alert_count open Dependabot alert(s)."
+
+          if [ "$alert_count" -eq 0 ]; then
+            echo "No open Dependabot alerts."
+            exit 0
+          fi
+
+          echo "$alerts" | jq -c '.[]' | while read -r alert; do
+
+            number=$(echo "$alert" | jq -r '.number')
+            title=$(echo "$alert" | jq -r '.security_advisory.summary // "Dependabot security alert"')
+            severity=$(echo "$alert" | jq -r '.security_advisory.severity // "unknown"')
+            package=$(echo "$alert" | jq -r '.dependency.package.name // "unknown"')
+            ecosystem=$(echo "$alert" | jq -r '.dependency.package.ecosystem // "unknown"')
+            vulnerable_version=$(echo "$alert" | jq -r '.security_vulnerability.vulnerable_version_range // "unknown"')
+            first_patched=$(echo "$alert" | jq -r '.security_vulnerability.first_patched_version.identifier // "No patched version available"')
+            url=$(echo "$alert" | jq -r '.html_url')
+
+            echo ""
+            echo "----------------------------------------"
+            echo "Dependabot Alert #$number"
+            echo "Package: $package"
+            echo "Severity: $severity"
+            echo "----------------------------------------"
+
+            issue_title="[Dependabot #$number] $title"
+
+            # Check if an issue already exists for this alert
+            existing=$(gh issue list \
+              --repo "$REPO" \
+              --state all \
+              --search "\"Dependabot Alert #$number\"" \
+              --json number \
+              --jq 'length')
+
+            if [ "$existing" -gt 0 ]; then
+              echo "Issue already exists for Dependabot Alert #$number. Skipping."
+              continue
+            fi
+
+            issue_body=$(cat <<EOF
+          ## Dependabot Security Alert
+
+          **Dependabot Alert:** #$number
+
+          **Package:** \`$package\`
+
+          **Ecosystem:** \`$ecosystem\`
+
+          **Severity:** $severity
+
+          **Vulnerable version:** \`$vulnerable_version\`
+
+          **First patched version:** \`$first_patched\`
+
+          **Security advisory:** $title
+
+          **Dependabot URL:** $url
+
+          ---
+
+          This issue was automatically created from a Dependabot security alert.
+
+          <!-- Dependabot Alert #$number -->
+          EOF
+          )
+
+            echo "Creating GitHub Issue..."
+
+            gh issue create \
+              --repo "$REPO" \
+              --title "$issue_title" \
+              --body "$issue_body"
+
+            echo "Issue created for Dependabot Alert #$number."
+
+          done
