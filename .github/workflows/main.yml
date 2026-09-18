@@ -2,19 +2,26 @@ name: Dependabot Alerts to Issues
 
 on:
   schedule:
-    # Runs every hour to check for new alerts
-    - cron: '0 * * * *'
-  workflow_dispatch: # Allows you to run this manually right now
+    - cron: "0 9 * * *"
+  workflow_dispatch:
 
 permissions:
-  issues: write
   security-events: read
+  issues: write
 
 jobs:
-  sync-alerts:
+  dependabot:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Fetch and Create Issues
-        uses: github/dependabot-alerts-to-issues@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create issues for Dependabot alerts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$REPO/dependabot/alerts?state=open" \
+            --paginate \
+            --jq '.[] |
+              "Title: \(.security_advisory.summary)\nPackage: \(.dependency.package.name)\nSeverity: \(.security_advisory.severity)\nURL: \(.html_url)"'
