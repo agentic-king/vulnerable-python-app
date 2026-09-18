@@ -1,5 +1,5 @@
 # Dependencies - versions patched for known CVEs
-Django==3.2.20  # Fixes CVE-2021-31542, CVE-2021-33203
+Django==5.2.15  # Fixes signed-cookie salt namespace collision (Dependabot #58)
 requests==2.31.0  # Updated to patched version
 Pillow==9.5.0  # Fixes CVE-2021-34552
 Flask==2.3.3  # Updated to patched version
