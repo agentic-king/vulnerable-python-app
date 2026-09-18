@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Create issues for Dependabot alerts
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DEPENDABOT_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           gh api \
